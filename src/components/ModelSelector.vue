@@ -1,5 +1,6 @@
 <script setup>
 import { computed, onMounted, onUnmounted, ref } from 'vue';
+import { formatModelDisplayName } from '../config.js';
 
 const props = defineProps({
   models: {
@@ -19,6 +20,7 @@ const rootRef = ref(null);
 const open = ref(false);
 
 const options = computed(() => props.models);
+const selectedModelLabel = computed(() => formatModelDisplayName(props.selectedModel));
 
 const toggleOpen = () => {
   open.value = !open.value;
@@ -64,7 +66,7 @@ onUnmounted(() => {
       aria-haspopup="listbox"
       @click="toggleOpen"
     >
-      <span class="truncate">{{ selectedModel }}</span>
+      <span class="truncate">{{ selectedModelLabel }}</span>
       <svg
         class="h-4 w-4 shrink-0 text-stone-500 transition-transform duration-200 dark:text-stone-400"
         :class="open ? 'rotate-180' : ''"
@@ -93,7 +95,7 @@ onUnmounted(() => {
           :aria-selected="model === selectedModel"
           @click="selectModel(model)"
         >
-          <span class="truncate">{{ model }}</span>
+          <span class="truncate">{{ formatModelDisplayName(model) }}</span>
         </button>
       </div>
     </div>

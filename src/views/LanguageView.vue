@@ -13,7 +13,7 @@ import AudioChunk from '../components/AudioChunk.vue';
 import AudioResultPlayer from '../components/AudioResultPlayer.vue';
 import ModelSelector from '../components/ModelSelector.vue';
 import VoiceSelector from '../components/VoiceSelector.vue';
-import { getModelsListUrl, DEFAULT_LANG_MODELS, DEFAULT_MODEL, REMOTE_LANG_MODELS_FALLBACK } from '../config.js';
+import { getModelsListUrl, DEFAULT_LANG_MODELS, DEFAULT_MODEL, REMOTE_LANG_MODELS_FALLBACK, fetchRemoteModelsFromHost } from '../config.js';
 import { addEntry } from '../utils/history-store.js';
 
 const props = defineProps({
@@ -285,9 +285,15 @@ const fetchModels = async () => {
     if (response.ok) {
       const data = await response.json();
       const list = data.models || [];
-      availableModels.value = list.length > 0 ? list : (getRemoteFallbackModels(props.lang).length > 0 ? getRemoteFallbackModels(props.lang) : (DEFAULT_LANG_MODELS[props.lang] || []));
+      if (list.length > 0) {
+        availableModels.value = list;
+      } else {
+        const remoteModels = await fetchRemoteModelsFromHost(props.lang);
+        availableModels.value = remoteModels.length > 0 ? remoteModels : (DEFAULT_LANG_MODELS[props.lang] || []);
+      }
     } else {
-      availableModels.value = getRemoteFallbackModels(props.lang).length > 0 ? getRemoteFallbackModels(props.lang) : (DEFAULT_LANG_MODELS[props.lang] || []);
+      const remoteModels = await fetchRemoteModelsFromHost(props.lang);
+      availableModels.value = remoteModels.length > 0 ? remoteModels : (DEFAULT_LANG_MODELS[props.lang] || []);
     }
     if (selectedModel.value && selectedModel.value !== "None" && !availableModels.value.includes(selectedModel.value)) {
       selectedModel.value = "None";
@@ -304,7 +310,8 @@ const fetchModels = async () => {
     }
   } catch (err) {
     console.error('Failed to fetch models:', err);
-    availableModels.value = getRemoteFallbackModels(props.lang).length > 0 ? getRemoteFallbackModels(props.lang) : (DEFAULT_LANG_MODELS[props.lang] || []);
+    const remoteModels = await fetchRemoteModelsFromHost(props.lang);
+    availableModels.value = remoteModels.length > 0 ? remoteModels : (getRemoteFallbackModels(props.lang).length > 0 ? getRemoteFallbackModels(props.lang) : (DEFAULT_LANG_MODELS[props.lang] || []));
   } finally {
     modelsLoading.value = false;
   }

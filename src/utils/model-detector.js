@@ -1,4 +1,4 @@
-import { REMOTE_VI_MODELS_FALLBACK } from '../config.js';
+import { REMOTE_VI_MODELS_FALLBACK, fetchRemoteModelsFromHost } from '../config.js';
 
 /**
  * Fetches available TTS models from Cloudflare R2 via Pages Function
@@ -19,10 +19,11 @@ export async function fetchAvailableModels() {
     }
     
     const models = data.models || [];
-    return models.length > 0 ? models : REMOTE_VI_MODELS_FALLBACK;
+    return models.length > 0 ? models : await fetchRemoteModelsFromHost('vi');
   } catch (error) {
     console.error('Error fetching available models:', error);
-    return REMOTE_VI_MODELS_FALLBACK;
+    const remoteModels = await fetchRemoteModelsFromHost('vi');
+    return remoteModels.length > 0 ? remoteModels : REMOTE_VI_MODELS_FALLBACK;
   }
 }
 
