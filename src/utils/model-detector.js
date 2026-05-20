@@ -1,4 +1,4 @@
-import { REMOTE_VI_MODELS_FALLBACK, fetchRemoteModelsFromHost } from '../config.js';
+import { fetchRemoteModelsFromHost } from '../config.js';
 
 /**
  * Fetches available TTS models from Cloudflare R2 via Pages Function
@@ -22,8 +22,7 @@ export async function fetchAvailableModels() {
     return models.length > 0 ? models : await fetchRemoteModelsFromHost('vi');
   } catch (error) {
     console.error('Error fetching available models:', error);
-    const remoteModels = await fetchRemoteModelsFromHost('vi');
-    return remoteModels.length > 0 ? remoteModels : REMOTE_VI_MODELS_FALLBACK;
+    return await fetchRemoteModelsFromHost('vi');
   }
 }
 

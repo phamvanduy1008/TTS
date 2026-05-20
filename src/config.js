@@ -25,6 +25,10 @@ function getRemotePiperHostBase() {
   return REMOTE_PIPER_HOST.replace(/\/$/, '');
 }
 
+export function hasRemotePiperHost() {
+  return getRemotePiperHostBase().length > 0;
+}
+
 function getHuggingFaceRepoInfo() {
   if (!REMOTE_PIPER_HOST) return null;
 
@@ -54,50 +58,66 @@ function getHuggingFaceRepoInfo() {
   }
 }
 
-function getHuggingFaceTreeUrl(lang) {
+function getHuggingFaceTreeUrls(lang) {
   const repoInfo = getHuggingFaceRepoInfo();
-  if (!repoInfo) return null;
+  if (!repoInfo) return [];
 
-  const path = [repoInfo.basePath, lang].filter(Boolean).join('/');
-  return `https://huggingface.co/api/models/${repoInfo.repoId}/tree/${repoInfo.revision}/${path}`;
+  const pathVariants = lang === 'vi'
+    ? [
+        [repoInfo.basePath, 'vi'],
+        [repoInfo.basePath],
+      ]
+    : [
+        [repoInfo.basePath, lang],
+      ];
+
+  return [...new Set(pathVariants
+    .map((segments) => segments.filter(Boolean).join('/'))
+    .map((path) => `https://huggingface.co/api/models/${repoInfo.repoId}/tree/${repoInfo.revision}${path ? `/${path}` : ''}`))];
 }
 
 export async function fetchRemoteModelsFromHost(lang) {
-  const treeUrl = getHuggingFaceTreeUrl(lang);
+  const treeUrls = getHuggingFaceTreeUrls(lang);
   const staticFallback = lang === 'vi'
     ? REMOTE_VI_MODELS_FALLBACK
     : (REMOTE_LANG_MODELS_FALLBACK[lang] || []);
 
-  if (!treeUrl) {
-    return staticFallback;
+  if (treeUrls.length === 0) {
+    return hasRemotePiperHost() ? staticFallback : [];
   }
 
   try {
-    const response = await fetch(treeUrl, {
-      headers: {
-        Accept: 'application/json',
-      },
-    });
+    const collected = [];
 
-    if (!response.ok) {
-      throw new Error(`Remote model list request failed: ${response.status}`);
-    }
+    for (const treeUrl of treeUrls) {
+      const response = await fetch(treeUrl, {
+        headers: {
+          Accept: 'application/json',
+        },
+      });
 
-    const entries = await response.json();
-    const models = Array.isArray(entries)
-      ? [...new Set(
-          entries
+      if (!response.ok) {
+        continue;
+      }
+
+      const entries = await response.json();
+      const models = Array.isArray(entries)
+        ? entries
             .map((entry) => entry?.path || entry?.rfilename || '')
             .filter((path) => typeof path === 'string' && path.endsWith('.onnx.json'))
             .map((path) => path.split('/').pop()?.replace(/\.onnx\.json$/, ''))
-            .filter(Boolean),
-        )].sort((a, b) => a.localeCompare(b))
-      : [];
+            .filter(Boolean)
+        : [];
 
-    return models.length > 0 ? models : staticFallback;
+      collected.push(...models);
+    }
+
+    const models = [...new Set(collected)].sort((a, b) => a.localeCompare(b));
+
+    return models.length > 0 ? models : (hasRemotePiperHost() ? staticFallback : []);
   } catch (error) {
     console.error(`Failed to load remote models for ${lang}:`, error);
-    return staticFallback;
+    return hasRemotePiperHost() ? staticFallback : [];
   }
 }
 
@@ -122,24 +142,36 @@ export function getModelsListUrl(lang) {
 }
 
 export function getRemoteVietnameseModelBaseUrl() {
-  return `${getRemotePiperHostBase()}/vi/`;
+  return getRemoteVietnameseModelBaseUrls()[0] || null;
 }
 
 export function getRemoteLanguageModelBaseUrl(lang) {
+  if (!hasRemotePiperHost()) return null;
   return `${getRemotePiperHostBase()}/${lang}/`;
+}
+
+export function getRemoteVietnameseModelBaseUrls() {
+  if (!hasRemotePiperHost()) return [];
+
+  const hostBase = getRemotePiperHostBase();
+  return [...new Set([
+    `${hostBase}/vi/`,
+    `${hostBase}/`,
+  ])];
 }
 
 export function getVietnameseModelAssetCandidates(modelName) {
   const encodedModel = encodeURIComponent(modelName);
+  const remoteBases = getRemoteVietnameseModelBaseUrls();
   return {
     modelPaths: [
       `/api/model/${encodedModel}.onnx`,
-      `${getRemoteVietnameseModelBaseUrl()}${encodedModel}.onnx`,
-    ],
+      ...remoteBases.map((base) => `${base}${encodedModel}.onnx`),
+    ].filter(Boolean),
     configPaths: [
       `/api/model/${encodedModel}.onnx.json`,
-      `${getRemoteVietnameseModelBaseUrl()}${encodedModel}.onnx.json`,
-    ],
+      ...remoteBases.map((base) => `${base}${encodedModel}.onnx.json`),
+    ].filter(Boolean),
   };
 }
 
@@ -151,12 +183,12 @@ export function getLanguageModelAssetCandidates(lang, modelName) {
   return {
     modelPaths: [
       `${localBase}${encodedModel}.onnx`,
-      `${remoteBase}${encodedModel}.onnx`,
-    ],
+      remoteBase ? `${remoteBase}${encodedModel}.onnx` : null,
+    ].filter(Boolean),
     configPaths: [
       `${localBase}${encodedModel}.onnx.json`,
-      `${remoteBase}${encodedModel}.onnx.json`,
-    ],
+      remoteBase ? `${remoteBase}${encodedModel}.onnx.json` : null,
+    ].filter(Boolean),
   };
 }
 

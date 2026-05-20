@@ -13,7 +13,7 @@ import AudioChunk from '../components/AudioChunk.vue';
 import AudioResultPlayer from '../components/AudioResultPlayer.vue';
 import ModelSelector from '../components/ModelSelector.vue';
 import VoiceSelector from '../components/VoiceSelector.vue';
-import { getModelsListUrl, DEFAULT_LANG_MODELS, DEFAULT_MODEL, REMOTE_LANG_MODELS_FALLBACK, fetchRemoteModelsFromHost } from '../config.js';
+import { getModelsListUrl, DEFAULT_LANG_MODELS, DEFAULT_MODEL, fetchRemoteModelsFromHost } from '../config.js';
 import { addEntry } from '../utils/history-store.js';
 
 const props = defineProps({
@@ -56,8 +56,6 @@ const selectedModel = ref("None");
 const modelsLoading = ref(false);
 const loadingProgress = ref(0);
 const historySelection = inject('historySelection', ref(null));
-
-const getRemoteFallbackModels = (lang) => REMOTE_LANG_MODELS_FALLBACK[lang] || [];
 
 const processed = computed(() => {
   return lastGeneration.value &&
@@ -357,7 +355,7 @@ const fetchModels = async () => {
   } catch (err) {
     console.error('Failed to fetch models:', err);
     const remoteModels = await fetchRemoteModelsFromHost(props.lang);
-    availableModels.value = remoteModels.length > 0 ? remoteModels : (getRemoteFallbackModels(props.lang).length > 0 ? getRemoteFallbackModels(props.lang) : (DEFAULT_LANG_MODELS[props.lang] || []));
+    availableModels.value = remoteModels.length > 0 ? remoteModels : (DEFAULT_LANG_MODELS[props.lang] || []);
   } finally {
     modelsLoading.value = false;
   }

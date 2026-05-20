@@ -186,7 +186,6 @@ export class PiperTTS {
       
       return new PiperTTS(voiceConfig, session);
     } catch (error) {
-      console.error('Error loading Piper model:', error);
       throw error;
     }
   }

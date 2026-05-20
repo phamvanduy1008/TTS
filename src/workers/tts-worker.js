@@ -12,8 +12,13 @@ async function initializeModel(modelName = null) {
     const { modelPaths, configPaths } = getVietnameseModelAssetCandidates(model);
 
     let lastError = null;
+    const attemptedSources = [];
     for (let i = 0; i < modelPaths.length; i++) {
       try {
+        attemptedSources.push({
+          model: modelPaths[i],
+          config: configPaths[i],
+        });
         tts = await PiperTTS.from_pretrained(modelPaths[i], configPaths[i]);
         break;
       } catch (error) {
@@ -23,7 +28,11 @@ async function initializeModel(modelName = null) {
     }
 
     if (!tts) {
-      throw lastError || new Error(`Unable to load model "${model}" from local or remote sources`);
+      const attempted = attemptedSources
+        .map(({ model, config }) => `model=${model}, config=${config}`)
+        .join(' | ');
+      const reason = lastError?.message || 'Unknown error';
+      throw new Error(`Unable to load model "${model}". Tried: ${attempted}. Last error: ${reason}`);
     }
     
     // Get available speakers
