@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, onUnmounted, computed, watch, nextTick } from 'vue';
+import { ref, onMounted, onUnmounted, computed, watch, nextTick, inject } from 'vue';
 import {
   DownloadIcon,
   PauseIcon,
@@ -55,6 +55,7 @@ const availableModels = ref([]);
 const selectedModel = ref("None");
 const modelsLoading = ref(false);
 const loadingProgress = ref(0);
+const historySelection = inject('historySelection', ref(null));
 
 const getRemoteFallbackModels = (lang) => REMOTE_LANG_MODELS_FALLBACK[lang] || [];
 
@@ -276,6 +277,51 @@ const handleCopy = async () => {
   setTimeout(() => { copied.value = false }, 2000);
 };
 
+const restoreHistoryEntry = async (entry) => {
+  if (!entry || entry.lang !== props.lang) return;
+
+  error.value = null;
+  resultPlayer.value?.pausePlayback();
+  resultPlaying.value = false;
+  isPlaying.value = false;
+  currentChunkIndex.value = -1;
+  chunks.value = [];
+  chunkDurations.value = [];
+  generationProgress.value = 0;
+  generationProgressLabel.value = '';
+  generationSubLabel.value = '';
+  generationStartedAt.value = 0;
+  livePlaybackTime.value = 0;
+  shouldResumeResultPlayback.value = false;
+
+  if (entry.model && !availableModels.value.includes(entry.model)) {
+    availableModels.value = [entry.model, ...availableModels.value];
+  }
+
+  text.value = entry.text || '';
+  selectedVoice.value = entry.voice ?? 0;
+  selectedModel.value = entry.model || selectedModel.value;
+  playbackSpeed.value = entry.speed || 1;
+
+  if (selectedModel.value && selectedModel.value !== 'None' && (!worker.value || entry.model !== lastGeneration.value?.model)) {
+    restartWorker(selectedModel.value);
+  }
+
+  status.value = 'ready';
+  result.value = entry.audio || null;
+  lastGeneration.value = {
+    text: text.value,
+    voice: selectedVoice.value,
+    speed: playbackSpeed.value,
+    model: selectedModel.value,
+  };
+  generationSession.value += 1;
+
+  await nextTick();
+  resultPlayer.value?.continueFrom(0, true);
+  historySelection.value = null;
+};
+
 const fetchModels = async () => {
   modelsLoading.value = true;
   error.value = null;
@@ -467,6 +513,15 @@ onMounted(async () => {
 });
 
 watch([text, selectedVoice, selectedModel], resetPlaybackToGenerate);
+
+watch(
+  () => historySelection.value?.token,
+  async () => {
+    if (!historySelection.value) return;
+    await restoreHistoryEntry(historySelection.value);
+  },
+  { immediate: true }
+);
 
 onUnmounted(() => {
   if (worker.value) {

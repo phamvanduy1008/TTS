@@ -1,19 +1,21 @@
 <script setup>
 import { ref, watch } from 'vue';
 import {
-  XIcon,
-  PlayIcon,
-  DownloadIcon,
+  CheckIcon,
   CopyIcon,
+  DownloadIcon,
+  PlayIcon,
   Trash2Icon,
+  XIcon,
 } from 'lucide-vue-next';
-import { getEntries, deleteEntry, clearAll } from '../utils/history-store.js';
+import { formatModelDisplayName } from '../config.js';
+import { clearAll, deleteEntry, getEntries } from '../utils/history-store.js';
 
 const props = defineProps({
   open: { type: Boolean, default: false },
 });
 
-const emit = defineEmits(['close']);
+const emit = defineEmits(['close', 'select']);
 
 const entries = ref([]);
 const loading = ref(false);
@@ -35,28 +37,50 @@ async function loadEntries() {
 watch(
   () => props.open,
   (isOpen) => {
-    if (isOpen) loadEntries();
+    if (isOpen) {
+      loadEntries();
+      return;
+    }
   }
 );
 
-function formatDate(ts) {
-  if (!ts) return '';
-  const d = new Date(ts);
-  return d.toLocaleString(undefined, {
-    dateStyle: 'short',
-    timeStyle: 'short',
-  });
-}
-
-function previewText(text, maxLen = 80) {
+function previewText(text, maxLen = 44) {
   if (!text) return '';
-  const t = text.trim();
-  return t.length <= maxLen ? t : t.slice(0, maxLen) + '…';
+  const normalized = text.replace(/\s+/g, ' ').trim();
+  return normalized.length <= maxLen ? normalized : `${normalized.slice(0, maxLen)}...`;
 }
 
-function langLabel(lang) {
-  const labels = { vi: 'Tiếng Việt', en: 'English', id: 'Indonesia' };
-  return labels[lang] || lang;
+function relativeTime(ts) {
+  if (!ts) return 'just now';
+  const diffMs = Date.now() - ts;
+  const minutes = Math.max(0, Math.floor(diffMs / 60000));
+
+  if (minutes < 1) return 'just now';
+  if (minutes < 60) return `${minutes} min ago`;
+
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} hr ago`;
+
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days} day${days > 1 ? 's' : ''} ago`;
+
+  return new Date(ts).toLocaleDateString();
+}
+
+function metaLine(entry) {
+  const model = formatModelDisplayName(entry?.model || '');
+  const speed = entry?.speed ? `${entry.speed}x` : '1x';
+  return [model, speed, relativeTime(entry?.createdAt)].filter(Boolean).join(' · ');
+}
+
+function charCountLabel(text) {
+  return `${(text || '').trim().length} chars`;
+}
+
+function selectEntry(entry) {
+  if (!entry) return;
+  emit('select', entry);
+  emit('close');
 }
 
 function downloadFilename(entry) {
@@ -64,15 +88,6 @@ function downloadFilename(entry) {
   const date = d.toISOString().slice(0, 10);
   const time = d.toTimeString().slice(0, 8).replace(/:/g, '-');
   return `tts-${date}-${time}.wav`;
-}
-
-function playAudio(entry) {
-  if (!entry?.audio) return;
-  const url = URL.createObjectURL(entry.audio);
-  const audio = new Audio(url);
-  audio.onended = () => URL.revokeObjectURL(url);
-  audio.onerror = () => URL.revokeObjectURL(url);
-  audio.play().catch(() => URL.revokeObjectURL(url));
 }
 
 function downloadAudio(entry) {
@@ -90,7 +105,11 @@ async function copyText(entry) {
   try {
     await navigator.clipboard.writeText(entry.text);
     copyId.value = entry.id;
-    setTimeout(() => { copyId.value = null; }, 2000);
+    setTimeout(() => {
+      if (copyId.value === entry.id) {
+        copyId.value = null;
+      }
+    }, 1800);
   } catch (err) {
     console.error('Copy failed:', err);
   }
@@ -99,19 +118,10 @@ async function copyText(entry) {
 async function removeEntry(entry) {
   try {
     await deleteEntry(entry.id);
-    entries.value = entries.value.filter((e) => e.id !== entry.id);
+    entries.value = entries.value.filter((item) => item.id !== entry.id);
   } catch (err) {
     console.error('Delete failed:', err);
   }
-}
-
-function voiceLabel(voice) {
-  if (voice === null || voice === undefined) return '';
-  if (typeof voice === 'number') {
-    const idx = Number.isFinite(voice) ? voice : 0;
-    return `Voice ${idx + 1}`;
-  }
-  return String(voice);
 }
 
 async function handleClearAll() {
@@ -136,112 +146,123 @@ async function handleClearAll() {
         role="dialog"
         aria-label="History"
       >
-        <!-- Backdrop -->
         <div
-          class="absolute inset-0 bg-black/30 dark:bg-black/50"
+          class="absolute inset-0 bg-stone-950/25 backdrop-blur-[1px] dark:bg-black/45"
           @click="emit('close')"
         />
 
-        <!-- Sidebar -->
         <div
-          class="relative w-full max-w-md bg-white dark:bg-gray-900 shadow-xl border-l border-gray-200 dark:border-gray-700 flex flex-col animate-slide-in"
+          class="relative flex h-full w-full max-w-xl flex-col border-l border-stone-200/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.97),rgba(249,245,238,0.96))] shadow-[0_24px_80px_rgba(28,25,23,0.18)] dark:border-stone-700 dark:bg-[linear-gradient(180deg,rgba(28,25,23,0.98),rgba(20,18,16,0.98))]"
         >
-          <!-- Header -->
-          <div class="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700 shrink-0">
-            <h2 class="text-lg font-semibold text-gray-800 dark:text-gray-200">
-              Lịch sử
-            </h2>
-            <div class="flex items-center gap-2">
-              <button
-                type="button"
-                class="text-sm text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 disabled:opacity-50"
-                :disabled="clearing || entries.length === 0"
-                @click="handleClearAll"
-              >
-                Xóa tất cả
-              </button>
-              <button
-                type="button"
-                class="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-400"
-                aria-label="Đóng"
-                @click="emit('close')"
-              >
-                <XIcon class="w-5 h-5" />
-              </button>
+          <div class="shrink-0 border-b border-stone-200/80 px-5 py-4 dark:border-stone-700">
+            <div class="flex items-center justify-between gap-4">
+              <div>
+                <p class="mono-ui text-[10px] font-semibold uppercase tracking-[0.28em] text-stone-400 dark:text-stone-500">Recent History</p>
+                <h2 class="mt-1 text-lg font-semibold text-stone-800 dark:text-stone-100">Generated audio archive</h2>
+              </div>
+              <div class="flex items-center gap-2">
+                <button
+                  type="button"
+                  class="rounded-full border border-stone-200 bg-white/80 px-3 py-1.5 text-xs font-semibold text-stone-600 transition hover:border-orange-300 hover:text-orange-700 disabled:opacity-50 dark:border-stone-700 dark:bg-stone-900/80 dark:text-stone-300 dark:hover:border-orange-400/40 dark:hover:text-orange-200"
+                  :disabled="clearing || entries.length === 0"
+                  @click="handleClearAll"
+                >
+                  Clear all
+                </button>
+                <button
+                  type="button"
+                  class="flex h-10 w-10 items-center justify-center rounded-full border border-stone-200 bg-white/80 text-stone-600 transition hover:border-stone-300 hover:text-stone-900 dark:border-stone-700 dark:bg-stone-900/80 dark:text-stone-300 dark:hover:border-stone-600 dark:hover:text-stone-100"
+                  aria-label="Close"
+                  @click="emit('close')"
+                >
+                  <XIcon class="h-4 w-4" />
+                </button>
+              </div>
             </div>
           </div>
 
-          <!-- List -->
-          <div class="flex-1 overflow-y-auto p-4">
-            <div v-if="loading" class="flex justify-center py-8">
-              <div class="animate-spin w-8 h-8 border-2 border-purple-500 border-t-transparent rounded-full" />
+          <div class="flex-1 overflow-y-auto px-4 py-4 sm:px-5">
+            <div v-if="loading" class="flex justify-center py-12">
+              <div class="h-8 w-8 animate-spin rounded-full border-2 border-orange-400 border-t-transparent" />
             </div>
+
             <div
               v-else-if="entries.length === 0"
-              class="text-center py-12 text-gray-500 dark:text-gray-400 text-sm"
+              class="rounded-[28px] border border-dashed border-stone-300 bg-white/60 px-6 py-14 text-center text-sm text-stone-500 dark:border-stone-700 dark:bg-stone-900/60 dark:text-stone-400"
             >
-              Chưa có lịch sử
+              No history yet. Generate audio once and it will show up here.
             </div>
-            <ul v-else class="space-y-3">
-              <li
-                v-for="entry in entries"
-                :key="entry.id"
-                class="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 p-3 space-y-2"
-              >
-                <p class="text-sm text-gray-700 dark:text-gray-300 line-clamp-2">
-                  {{ previewText(entry.text) }}
-                </p>
-                <div class="flex flex-wrap items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
-                  <span>{{ formatDate(entry.createdAt) }}</span>
-                  <span class="px-1.5 py-0.5 rounded bg-gray-200 dark:bg-gray-700">
-                    {{ langLabel(entry.lang) }}
-                  </span>
-                  <span
-                    v-if="entry.model === 'Libritts_r' && voiceLabel(entry.voice)"
-                    class="px-1.5 py-0.5 rounded bg-gray-200 dark:bg-gray-700"
-                  >
-                    {{ voiceLabel(entry.voice) }}
-                  </span>
-                  <span class="truncate max-w-[120px]" :title="entry.model">
-                    {{ entry.model }}
-                  </span>
-                </div>
-                <div class="flex items-center gap-1 pt-1">
+
+            <div
+              v-else
+              class="rounded-[24px] border border-stone-200/80 bg-white/75 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.72)] dark:border-stone-700 dark:bg-stone-900/60"
+            >
+              <ul class="divide-y divide-stone-200/80 dark:divide-stone-700">
+                <li
+                  v-for="entry in entries"
+                  :key="entry.id"
+                  class="group flex items-start gap-3 px-2 py-3 first:pt-2 last:pb-2 sm:px-3"
+                >
                   <button
                     type="button"
-                    class="p-2 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400"
-                    title="Phát"
-                    @click="playAudio(entry)"
+                    class="mt-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-stone-300 bg-white text-stone-500 transition hover:border-orange-300 hover:text-orange-700 dark:border-stone-600 dark:bg-stone-950 dark:text-stone-300 dark:hover:border-orange-400/40 dark:hover:text-orange-200"
+                    :title="`Play ${previewText(entry.text, 18)}`"
+                    @click="selectEntry(entry)"
                   >
-                    <PlayIcon class="w-4 h-4" />
+                    <PlayIcon class="h-3.5 w-3.5" />
                   </button>
+
                   <button
                     type="button"
-                    class="p-2 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400"
-                    title="Tải xuống"
-                    @click="downloadAudio(entry)"
+                    class="min-w-0 flex-1 text-left"
+                    @click="selectEntry(entry)"
                   >
-                    <DownloadIcon class="w-4 h-4" />
+                    <div class="flex items-start justify-between gap-3">
+                      <div class="min-w-0">
+                        <p class="truncate text-sm font-semibold text-stone-800 dark:text-stone-100">
+                          {{ previewText(entry.text) }}
+                        </p>
+                        <p class="mt-0.5 text-xs text-stone-500 dark:text-stone-400">
+                          {{ metaLine(entry) }}
+                        </p>
+                      </div>
+
+                      <span class="shrink-0 rounded-full bg-violet-100 px-2.5 py-1 text-[11px] font-semibold text-violet-700 dark:bg-violet-500/15 dark:text-violet-200">
+                        {{ charCountLabel(entry.text) }}
+                      </span>
+                    </div>
+
+                    <div class="mt-2 flex items-center gap-1 opacity-95 sm:opacity-0 sm:transition sm:group-hover:opacity-100">
+                      <button
+                        type="button"
+                        class="flex h-8 w-8 items-center justify-center rounded-full text-stone-500 transition hover:bg-stone-100 hover:text-stone-800 dark:text-stone-400 dark:hover:bg-stone-800 dark:hover:text-stone-100"
+                        title="Download"
+                        @click.stop="downloadAudio(entry)"
+                      >
+                        <DownloadIcon class="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        class="flex h-8 w-8 items-center justify-center rounded-full text-stone-500 transition hover:bg-stone-100 hover:text-stone-800 dark:text-stone-400 dark:hover:bg-stone-800 dark:hover:text-stone-100"
+                        :title="copyId === entry.id ? 'Copied' : 'Copy text'"
+                        @click.stop="copyText(entry)"
+                      >
+                        <CheckIcon v-if="copyId === entry.id" class="h-3.5 w-3.5 text-emerald-500" />
+                        <CopyIcon v-else class="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        class="flex h-8 w-8 items-center justify-center rounded-full text-stone-500 transition hover:bg-red-50 hover:text-red-600 dark:text-stone-400 dark:hover:bg-red-500/10 dark:hover:text-red-300"
+                        title="Delete"
+                        @click.stop="removeEntry(entry)"
+                      >
+                        <Trash2Icon class="h-3.5 w-3.5" />
+                      </button>
+                    </div>
                   </button>
-                  <button
-                    type="button"
-                    class="p-2 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-400"
-                    :title="copyId === entry.id ? 'Đã copy' : 'Copy văn bản'"
-                    @click="copyText(entry)"
-                  >
-                    <CopyIcon class="w-4 h-4" :class="copyId === entry.id ? 'text-green-500' : ''" />
-                  </button>
-                  <button
-                    type="button"
-                    class="p-2 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/30 text-gray-600 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-400"
-                    title="Xóa"
-                    @click="removeEntry(entry)"
-                  >
-                    <Trash2Icon class="w-4 h-4" />
-                  </button>
-                </div>
-              </li>
-            </ul>
+                </li>
+              </ul>
+            </div>
           </div>
         </div>
       </div>
@@ -254,27 +275,19 @@ async function handleClearAll() {
 .panel-leave-active {
   transition: opacity 0.2s ease;
 }
+
 .panel-enter-from,
 .panel-leave-to {
   opacity: 0;
 }
+
 .panel-enter-active .relative,
 .panel-leave-active .relative {
   transition: transform 0.25s ease;
 }
+
 .panel-enter-from .relative,
 .panel-leave-to .relative {
   transform: translateX(100%);
-}
-.animate-slide-in {
-  animation: slideIn 0.25s ease;
-}
-@keyframes slideIn {
-  from {
-    transform: translateX(100%);
-  }
-  to {
-    transform: translateX(0);
-  }
 }
 </style>

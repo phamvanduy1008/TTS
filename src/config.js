@@ -5,7 +5,9 @@
  */
 
 export const REMOTE_PIPER_HOST = (import.meta.env.VITE_REMOTE_PIPER_HOST || '').trim();
+
 export const REMOTE_VI_MODELS_FALLBACK = ['minhquang', 'ngochuyen'];
+
 export const REMOTE_LANG_MODELS_FALLBACK = {
   en: ['mattheo'],
   id: [],
@@ -83,12 +85,13 @@ export async function fetchRemoteModelsFromHost(lang) {
 
     const entries = await response.json();
     const models = Array.isArray(entries)
-      ? [...new Set(entries
-          .map((entry) => entry?.path || entry?.rfilename || '')
-          .filter((path) => typeof path === 'string' && path.endsWith('.onnx.json'))
-          .map((path) => path.split('/').pop()?.replace(/\.onnx\.json$/, ''))
-          .filter(Boolean))]
-          .sort((a, b) => a.localeCompare(b))
+      ? [...new Set(
+          entries
+            .map((entry) => entry?.path || entry?.rfilename || '')
+            .filter((path) => typeof path === 'string' && path.endsWith('.onnx.json'))
+            .map((path) => path.split('/').pop()?.replace(/\.onnx\.json$/, ''))
+            .filter(Boolean),
+        )].sort((a, b) => a.localeCompare(b))
       : [];
 
     return models.length > 0 ? models : staticFallback;
@@ -188,7 +191,11 @@ export function getASRModelsListUrl() {
 export const ASR_CODE_BASE = '/code/asr-wasm/';
 
 /** Model-specific ASR filenames (.wasm, .data, main .js); each model has its own. */
-const ASR_MODEL_FILES = ['sherpa-onnx-wasm-main-vad-asr.wasm', 'sherpa-onnx-wasm-main-vad-asr.data', 'sherpa-onnx-wasm-main-vad-asr.js'];
+const ASR_MODEL_FILES = [
+  'sherpa-onnx-wasm-main-vad-asr.wasm',
+  'sherpa-onnx-wasm-main-vad-asr.data',
+  'sherpa-onnx-wasm-main-vad-asr.js',
+];
 
 /**
  * ASR WASM assets (sherpa-onnx VAD+ASR).

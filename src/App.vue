@@ -1,6 +1,6 @@
 <script setup>
-import { ref } from 'vue';
-import { RouterView } from 'vue-router';
+import { provide, ref } from 'vue';
+import { RouterView, useRouter } from 'vue-router';
 import ThemeToggle from './components/ThemeToggle.vue';
 import HistoryPanel from './components/HistoryPanel.vue';
 import { History, Share2 } from 'lucide-vue-next';
@@ -8,6 +8,10 @@ import { History, Share2 } from 'lucide-vue-next';
 const shareCopied = ref(false);
 let shareFeedbackTimer = null;
 const historyOpen = ref(false);
+const historySelection = ref(null);
+const router = useRouter();
+
+provide('historySelection', historySelection);
 
 function copyShareLink() {
   const url = window.location.href;
@@ -18,6 +22,22 @@ function copyShareLink() {
       shareCopied.value = false;
     }, 2000);
   });
+}
+
+function handleHistorySelect(entry) {
+  if (!entry?.lang) return;
+
+  historySelection.value = {
+    ...entry,
+    token: Date.now(),
+  };
+
+  historyOpen.value = false;
+
+  const targetPath = entry.lang === 'vi' ? '/' : `/${entry.lang}`;
+  if (router.currentRoute.value.path !== targetPath) {
+    router.push(targetPath).catch(() => {});
+  }
 }
 </script>
 
@@ -116,6 +136,6 @@ Enter text, select model, press play, download WAV.            </div>
       </main>
     </div>
 
-    <HistoryPanel :open="historyOpen" @close="historyOpen = false" />
+    <HistoryPanel :open="historyOpen" @close="historyOpen = false" @select="handleHistorySelect" />
   </div>
 </template>
